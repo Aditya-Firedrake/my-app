@@ -8,7 +8,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/your-username/ecommerce-app.git
+    repoURL: https://github.com/adityakrs/ecommerce-app.git
     targetRevision: HEAD
     path: helm/ecommerce-app
     helm:
