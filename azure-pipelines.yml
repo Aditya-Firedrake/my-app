@@ -1,0 +1,155 @@
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    include:
+    - frontend/*
+    - backend/*
+    - payment-service/*
+    - docker-compose.yml
+
+variables:
+  dockerRegistryServiceConnection: 'your-docker-registry-connection'
+  imageRepository: 'ecommerce-app'
+  containerRegistry: 'your-registry.azurecr.io'
+  dockerfilePath: '**/Dockerfile'
+  tag: '$(Build.BuildId)'
+  vmImageName: 'ubuntu-latest'
+
+stages:
+- stage: Build
+  displayName: 'Build and Test'
+  jobs:
+  - job: Build
+    displayName: 'Build and Test Applications'
+    pool:
+      vmImage: $(vmImageName)
+    
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '18.x'
+      displayName: 'Install Node.js'
+    
+    - script: |
+        echo "Installing dependencies for backend..."
+        cd backend
+        npm install
+        npm run test
+      displayName: 'Backend - Install and Test'
+    
+    - script: |
+        echo "Installing dependencies for payment service..."
+        cd payment-service
+        npm install
+        npm run test
+      displayName: 'Payment Service - Install and Test'
+    
+    - task: Docker@2
+      inputs:
+        containerRegistry: $(dockerRegistryServiceConnection)
+        repository: '$(imageRepository)/frontend'
+        command: 'buildAndPush'
+        Dockerfile: 'frontend/Dockerfile'
+        tags: |
+          $(tag)
+          latest
+      displayName: 'Build and Push Frontend Image'
+    
+    - task: Docker@2
+      inputs:
+        containerRegistry: $(dockerRegistryServiceConnection)
+        repository: '$(imageRepository)/backend'
+        command: 'buildAndPush'
+        Dockerfile: 'backend/Dockerfile'
+        tags: |
+          $(tag)
+          latest
+      displayName: 'Build and Push Backend Image'
+    
+    - task: Docker@2
+      inputs:
+        containerRegistry: $(dockerRegistryServiceConnection)
+        repository: '$(imageRepository)/payment'
+        command: 'buildAndPush'
+        Dockerfile: 'payment-service/Dockerfile'
+        tags: |
+          $(tag)
+          latest
+      displayName: 'Build and Push Payment Service Image'
+    
+    - script: |
+        echo "##vso[task.setvariable variable=IMAGE_TAG]$(tag)"
+      displayName: 'Set Image Tag Variable'
+
+- stage: Security
+  displayName: 'Security Scan'
+  dependsOn: Build
+  jobs:
+  - job: SecurityScan
+    displayName: 'Security Vulnerability Scan'
+    pool:
+      vmImage: $(vmImageName)
+    
+    steps:
+    - task: dependency-check-build-task@5
+      inputs:
+        projectName: 'ecommerce-app'
+        scanPath: '$(Build.SourcesDirectory)'
+        format: 'HTML'
+        out: '$(Build.ArtifactStagingDirectory)/reports'
+      displayName: 'Dependency Check'
+    
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: '$(Build.ArtifactStagingDirectory)/reports'
+        artifactName: 'security-reports'
+      displayName: 'Publish Security Reports'
+
+- stage: DeployToStaging
+  displayName: 'Deploy to Staging'
+  dependsOn: Security
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployToStaging
+    displayName: 'Deploy to Staging Environment'
+    environment: 'staging'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: KubernetesManifest@0
+            inputs:
+              action: 'deploy'
+              kubernetesServiceConnection: 'staging-k8s-connection'
+              manifests: 'k8s/staging/*.yml'
+              containers: |
+                $(containerRegistry)/$(imageRepository)/frontend:$(IMAGE_TAG)
+                $(containerRegistry)/$(imageRepository)/backend:$(IMAGE_TAG)
+                $(containerRegistry)/$(imageRepository)/payment:$(IMAGE_TAG)
+            displayName: 'Deploy to Staging Kubernetes'
+
+- stage: DeployToProduction
+  displayName: 'Deploy to Production'
+  dependsOn: DeployToStaging
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployToProduction
+    displayName: 'Deploy to Production Environment'
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: KubernetesManifest@0
+            inputs:
+              action: 'deploy'
+              kubernetesServiceConnection: 'production-k8s-connection'
+              manifests: 'k8s/production/*.yml'
+              containers: |
+                $(containerRegistry)/$(imageRepository)/frontend:$(IMAGE_TAG)
+                $(containerRegistry)/$(imageRepository)/backend:$(IMAGE_TAG)
+                $(containerRegistry)/$(imageRepository)/payment:$(IMAGE_TAG)
+            displayName: 'Deploy to Production Kubernetes' 

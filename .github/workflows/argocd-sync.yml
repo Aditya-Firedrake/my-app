@@ -1,0 +1,46 @@
+name: ArgoCD Sync
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+jobs:
+  argocd-sync:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install ArgoCD CLI
+      run: |
+        curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+        sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+        rm argocd-linux-amd64
+
+    - name: Login to ArgoCD
+      run: |
+        argocd login ${{ secrets.ARGOCD_SERVER }} \
+          --username ${{ secrets.ARGOCD_USERNAME }} \
+          --password ${{ secrets.ARGOCD_PASSWORD }} \
+          --insecure
+
+    - name: Sync Staging Application
+      if: github.ref == 'refs/heads/develop'
+      run: |
+        argocd app sync ecommerce-app-staging --prune
+
+    - name: Sync Production Application
+      if: github.ref == 'refs/heads/main'
+      run: |
+        argocd app sync ecommerce-app-production --prune
+
+    - name: Wait for Sync
+      run: |
+        if [ "${{ github.ref }}" = "refs/heads/develop" ]; then
+          argocd app wait ecommerce-app-staging --health
+        elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          argocd app wait ecommerce-app-production --health
+        fi 

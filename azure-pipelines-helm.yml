@@ -1,0 +1,248 @@
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    include:
+    - frontend/*
+    - backend/*
+    - payment-service/*
+    - helm/*
+    - docker-compose.yml
+
+variables:
+  dockerRegistryServiceConnection: 'your-docker-registry-connection'
+  imageRepository: 'ecommerce-app'
+  containerRegistry: 'your-registry.azurecr.io'
+  dockerfilePath: '**/Dockerfile'
+  tag: '$(Build.BuildId)'
+  vmImageName: 'ubuntu-latest'
+  helmVersion: '3.12.0'
+
+stages:
+- stage: Build
+  displayName: 'Build and Test'
+  jobs:
+  - job: Build
+    displayName: 'Build and Test Applications'
+    pool:
+      vmImage: $(vmImageName)
+    
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '18.x'
+      displayName: 'Install Node.js'
+    
+    - script: |
+        echo "Installing dependencies for backend..."
+        cd backend
+        npm install
+        npm run test
+      displayName: 'Backend - Install and Test'
+    
+    - script: |
+        echo "Installing dependencies for payment service..."
+        cd payment-service
+        npm install
+        npm run test
+      displayName: 'Payment Service - Install and Test'
+    
+    - task: Docker@2
+      inputs:
+        containerRegistry: $(dockerRegistryServiceConnection)
+        repository: '$(imageRepository)/frontend'
+        command: 'buildAndPush'
+        Dockerfile: 'frontend/Dockerfile'
+        tags: |
+          $(tag)
+          latest
+      displayName: 'Build and Push Frontend Image'
+    
+    - task: Docker@2
+      inputs:
+        containerRegistry: $(dockerRegistryServiceConnection)
+        repository: '$(imageRepository)/backend'
+        command: 'buildAndPush'
+        Dockerfile: 'backend/Dockerfile'
+        tags: |
+          $(tag)
+          latest
+      displayName: 'Build and Push Backend Image'
+    
+    - task: Docker@2
+      inputs:
+        containerRegistry: $(dockerRegistryServiceConnection)
+        repository: '$(imageRepository)/payment'
+        command: 'buildAndPush'
+        Dockerfile: 'payment-service/Dockerfile'
+        tags: |
+          $(tag)
+          latest
+      displayName: 'Build and Push Payment Service Image'
+    
+    - script: |
+        echo "##vso[task.setvariable variable=IMAGE_TAG]$(tag)"
+      displayName: 'Set Image Tag Variable'
+
+- stage: Security
+  displayName: 'Security Scan'
+  dependsOn: Build
+  jobs:
+  - job: SecurityScan
+    displayName: 'Security Vulnerability Scan'
+    pool:
+      vmImage: $(vmImageName)
+    
+    steps:
+    - task: dependency-check-build-task@5
+      inputs:
+        projectName: 'ecommerce-app'
+        scanPath: '$(Build.SourcesDirectory)'
+        format: 'HTML'
+        out: '$(Build.ArtifactStagingDirectory)/reports'
+      displayName: 'Dependency Check'
+    
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: '$(Build.ArtifactStagingDirectory)/reports'
+        artifactName: 'security-reports'
+      displayName: 'Publish Security Reports'
+
+- stage: PackageHelm
+  displayName: 'Package Helm Charts'
+  dependsOn: Security
+  jobs:
+  - job: PackageHelm
+    displayName: 'Package and Validate Helm Charts'
+    pool:
+      vmImage: $(vmImageName)
+    
+    steps:
+    - task: HelmInstaller@0
+      inputs:
+        helmVersion: $(helmVersion)
+      displayName: 'Install Helm'
+    
+    - script: |
+        echo "Validating Helm charts..."
+        helm lint helm/ecommerce-app
+        helm template ecommerce-app helm/ecommerce-app --values helm/ecommerce-app/values.yaml
+      displayName: 'Validate Helm Charts'
+    
+    - script: |
+        echo "Packaging Helm charts..."
+        helm package helm/ecommerce-app --destination $(Build.ArtifactStagingDirectory)/helm
+      displayName: 'Package Helm Charts'
+    
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: '$(Build.ArtifactStagingDirectory)/helm'
+        artifactName: 'helm-charts'
+      displayName: 'Publish Helm Charts'
+
+- stage: DeployToStaging
+  displayName: 'Deploy to Staging'
+  dependsOn: PackageHelm
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  jobs:
+  - deployment: DeployToStaging
+    displayName: 'Deploy to Staging Environment'
+    environment: 'staging'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: HelmInstaller@0
+            inputs:
+              helmVersion: $(helmVersion)
+            displayName: 'Install Helm'
+          
+          - script: |
+              echo "Deploying to staging with Helm..."
+              helm upgrade --install ecommerce-staging helm/ecommerce-app \
+                --namespace ecommerce-staging \
+                --create-namespace \
+                --set global.environment=staging \
+                --set global.imageRegistry=$(containerRegistry) \
+                --set frontend.image.tag=$(IMAGE_TAG) \
+                --set backend.image.tag=$(IMAGE_TAG) \
+                --set payment.image.tag=$(IMAGE_TAG) \
+                --wait --timeout 10m
+            displayName: 'Deploy to Staging with Helm'
+          
+          - script: |
+              echo "Verifying deployment..."
+              kubectl get pods -n ecommerce-staging
+              kubectl get services -n ecommerce-staging
+            displayName: 'Verify Staging Deployment'
+
+- stage: DeployToProduction
+  displayName: 'Deploy to Production'
+  dependsOn: DeployToStaging
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployToProduction
+    displayName: 'Deploy to Production Environment'
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: HelmInstaller@0
+            inputs:
+              helmVersion: $(helmVersion)
+            displayName: 'Install Helm'
+          
+          - script: |
+              echo "Deploying to production with Helm..."
+              helm upgrade --install ecommerce-production helm/ecommerce-app \
+                --namespace ecommerce-production \
+                --create-namespace \
+                -f helm/ecommerce-app/values-production.yaml \
+                --set global.imageRegistry=$(containerRegistry) \
+                --set frontend.image.tag=$(IMAGE_TAG) \
+                --set backend.image.tag=$(IMAGE_TAG) \
+                --set payment.image.tag=$(IMAGE_TAG) \
+                --wait --timeout 15m
+            displayName: 'Deploy to Production with Helm'
+          
+          - script: |
+              echo "Verifying production deployment..."
+              kubectl get pods -n ecommerce-production
+              kubectl get services -n ecommerce-production
+              kubectl get ingress -n ecommerce-production
+            displayName: 'Verify Production Deployment'
+          
+          - script: |
+              echo "Running smoke tests..."
+              # Add your smoke test commands here
+              curl -f http://ecommerce.com/health || exit 1
+            displayName: 'Smoke Tests'
+
+- stage: Notify
+  displayName: 'Notify Team'
+  dependsOn: 
+  - DeployToStaging
+  - DeployToProduction
+  condition: always()
+  jobs:
+  - job: Notify
+    displayName: 'Send Notifications'
+    pool:
+      vmImage: $(vmImageName)
+    
+    steps:
+    - script: |
+        echo "Deployment completed successfully!"
+        echo "Staging: https://staging.ecommerce.com"
+        echo "Production: https://ecommerce.com"
+      displayName: 'Deployment Summary'
+    
+    - task: SlackNotifier@1
+      inputs:
+        channel: '#deployments'
+        message: 'E-commerce app deployment completed successfully!'
+      displayName: 'Slack Notification'
+      condition: succeeded() 
