@@ -1,274 +1,335 @@
-# Default values for ecommerce-app
-# This is a YAML-formatted file.
-
-# Global configuration
+# # Default values for ecommerce-app
+# # This is a YAML-formatted file.
 global:
   environment: staging
-  imageRegistry: "your-registry.azurecr.io"
-  imagePullSecrets:
-    - name: acr-secret
+  imageRegistry: "adityakrs/my-app"
 
-# Frontend service configuration
 frontend:
   enabled: true
-  replicaCount: 2
   image:
-    repository: ecommerce-app/frontend
-    tag: "latest"
+    repository: adityakrs/my-app
+    tag: frontend-latest
     pullPolicy: IfNotPresent
   service:
-    type: LoadBalancer
+    type: ClusterIP
     port: 80
-    targetPort: 80
-  ingress:
-    enabled: true
-    className: nginx
-    hosts:
-      - host: staging.ecommerce.com
-        paths:
-          - path: /
-            pathType: Prefix
-    tls: []
-  resources:
-    limits:
-      cpu: 200m
-      memory: 256Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
-  autoscaling:
-    enabled: true
-    minReplicas: 2
-    maxReplicas: 10
-    targetCPUUtilizationPercentage: 70
-  livenessProbe:
-    httpGet:
-      path: /health
-      port: 80
-    initialDelaySeconds: 30
-    periodSeconds: 10
-  readinessProbe:
-    httpGet:
-      path: /health
-      port: 80
-    initialDelaySeconds: 5
-    periodSeconds: 5
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
-# Backend service configuration
 backend:
   enabled: true
-  replicaCount: 2
   image:
-    repository: ecommerce-app/backend
-    tag: "latest"
+    repository: adityakrs/my-app
+    tag: backend-latest
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
     port: 5000
-    targetPort: 5000
-  resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 200m
-      memory: 256Mi
-  autoscaling:
-    enabled: true
-    minReplicas: 2
-    maxReplicas: 10
-    targetCPUUtilizationPercentage: 70
-  livenessProbe:
-    httpGet:
-      path: /health
-      port: 5000
-    initialDelaySeconds: 30
-    periodSeconds: 10
-  readinessProbe:
-    httpGet:
-      path: /health
-      port: 5000
-    initialDelaySeconds: 5
-    periodSeconds: 5
   env:
-    - name: MONGODB_URI
-      value: "mongodb://mongodb-service:27017/ecommerce"
-    - name: PORT
-      value: "5000"
-    - name: JWT_SECRET
-      valueFrom:
-        secretKeyRef:
-          name: app-secrets
-          key: jwt-secret
+    MONGO_URL: "mongodb://mongo:27017/myapp"
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
-# Payment service configuration
 payment:
   enabled: true
-  replicaCount: 2
   image:
-    repository: ecommerce-app/payment
-    tag: "latest"
+    repository: adityakrs/my-app
+    tag: payment-service-latest
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
-    port: 5001
-    targetPort: 5001
-  resources:
-    limits:
-      cpu: 300m
-      memory: 256Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
-  autoscaling:
-    enabled: true
-    minReplicas: 2
-    maxReplicas: 8
-    targetCPUUtilizationPercentage: 70
-  livenessProbe:
-    httpGet:
-      path: /health
-      port: 5001
-    initialDelaySeconds: 30
-    periodSeconds: 10
-  readinessProbe:
-    httpGet:
-      path: /health
-      port: 5001
-    initialDelaySeconds: 5
-    periodSeconds: 5
-  env:
-    - name: PORT
-      value: "5001"
+    port: 4000
+  env: {}
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
-# MongoDB configuration
 mongodb:
   enabled: true
   image:
     repository: mongo
-    tag: "latest"
-    pullPolicy: IfNotPresent
+    tag: latest
   service:
     type: ClusterIP
     port: 27017
-    targetPort: 27017
-  resources:
-    limits:
-      cpu: 500m
-      memory: 1Gi
-    requests:
-      cpu: 200m
-      memory: 512Mi
-  persistence:
-    enabled: true
-    storageClass: "default"
-    size: 10Gi
-  env:
-    - name: MONGO_INITDB_DATABASE
-      value: "ecommerce"
-    - name: MONGO_ROOT_PASSWORD
-      valueFrom:
-        secretKeyRef:
-          name: mongodb-secrets
-          key: mongodb-root-password
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
-# Ingress configuration
-ingress:
-  enabled: true
-  className: nginx
-  annotations:
-    kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-  hosts:
-    - host: staging.ecommerce.com
-      paths:
-        - path: /
-          pathType: Prefix
-          backend:
-            service:
-              name: frontend-service
-              port:
-                number: 80
-        - path: /api
-          pathType: Prefix
-          backend:
-            service:
-              name: backend-service
-              port:
-                number: 5000
-        - path: /payment
-          pathType: Prefix
-          backend:
-            service:
-              name: payment-service
-              port:
-                number: 5001
-  tls: []
+# # Global configuration
+# global:
+#   environment: staging
+#   imageRegistry: "your-registry.azurecr.io"
+#   imagePullSecrets:
+#     - name: acr-secret
 
-# Secrets configuration
-secrets:
-  enabled: true
-  jwtSecret: "your-super-secret-jwt-key"
-  mongodbPassword: "your-mongodb-password"
+# # Frontend service configuration
+# frontend:
+#   enabled: true
+#   replicaCount: 2
+#   image:
+#     repository: ecommerce-app/frontend
+#     tag: "latest"
+#     pullPolicy: IfNotPresent
+#   service:
+#     type: LoadBalancer
+#     port: 80
+#     targetPort: 80
+#   ingress:
+#     enabled: true
+#     className: nginx
+#     hosts:
+#       - host: staging.ecommerce.com
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#     tls: []
+#   resources:
+#     limits:
+#       cpu: 200m
+#       memory: 256Mi
+#     requests:
+#       cpu: 100m
+#       memory: 128Mi
+#   autoscaling:
+#     enabled: true
+#     minReplicas: 2
+#     maxReplicas: 10
+#     targetCPUUtilizationPercentage: 70
+#   livenessProbe:
+#     httpGet:
+#       path: /health
+#       port: 80
+#     initialDelaySeconds: 30
+#     periodSeconds: 10
+#   readinessProbe:
+#     httpGet:
+#       path: /health
+#       port: 80
+#     initialDelaySeconds: 5
+#     periodSeconds: 5
 
-# Network policies
-networkPolicy:
-  enabled: true
-  frontendPolicy:
-    enabled: true
-    ingress:
-      - from:
-          - podSelector:
-              matchLabels:
-                app: backend
-        ports:
-          - protocol: TCP
-            port: 80
-  backendPolicy:
-    enabled: true
-    ingress:
-      - from:
-          - podSelector:
-              matchLabels:
-                app: frontend
-        ports:
-          - protocol: TCP
-            port: 5000
-      - from:
-          - podSelector:
-              matchLabels:
-                app: payment
-        ports:
-          - protocol: TCP
-            port: 5000
-    egress:
-      - to:
-          - podSelector:
-              matchLabels:
-                app: mongodb
-        ports:
-          - protocol: TCP
-            port: 27017
+# # Backend service configuration
+# backend:
+#   enabled: true
+#   replicaCount: 2
+#   image:
+#     repository: ecommerce-app/backend
+#     tag: "latest"
+#     pullPolicy: IfNotPresent
+#   service:
+#     type: ClusterIP
+#     port: 5000
+#     targetPort: 5000
+#   resources:
+#     limits:
+#       cpu: 500m
+#       memory: 512Mi
+#     requests:
+#       cpu: 200m
+#       memory: 256Mi
+#   autoscaling:
+#     enabled: true
+#     minReplicas: 2
+#     maxReplicas: 10
+#     targetCPUUtilizationPercentage: 70
+#   livenessProbe:
+#     httpGet:
+#       path: /health
+#       port: 5000
+#     initialDelaySeconds: 30
+#     periodSeconds: 10
+#   readinessProbe:
+#     httpGet:
+#       path: /health
+#       port: 5000
+#     initialDelaySeconds: 5
+#     periodSeconds: 5
+#   env:
+#     - name: MONGODB_URI
+#       value: "mongodb://mongodb-service:27017/ecommerce"
+#     - name: PORT
+#       value: "5000"
+#     - name: JWT_SECRET
+#       valueFrom:
+#         secretKeyRef:
+#           name: app-secrets
+#           key: jwt-secret
 
-# Monitoring configuration
-monitoring:
-  enabled: false
-  prometheus:
-    enabled: false
-    serviceMonitor:
-      enabled: false
-  grafana:
-    enabled: false
-    dashboard:
-      enabled: false
+# # Payment service configuration
+# payment:
+#   enabled: true
+#   replicaCount: 2
+#   image:
+#     repository: ecommerce-app/payment
+#     tag: "latest"
+#     pullPolicy: IfNotPresent
+#   service:
+#     type: ClusterIP
+#     port: 5001
+#     targetPort: 5001
+#   resources:
+#     limits:
+#       cpu: 300m
+#       memory: 256Mi
+#     requests:
+#       cpu: 100m
+#       memory: 128Mi
+#   autoscaling:
+#     enabled: true
+#     minReplicas: 2
+#     maxReplicas: 8
+#     targetCPUUtilizationPercentage: 70
+#   livenessProbe:
+#     httpGet:
+#       path: /health
+#       port: 5001
+#     initialDelaySeconds: 30
+#     periodSeconds: 10
+#   readinessProbe:
+#     httpGet:
+#       path: /health
+#       port: 5001
+#     initialDelaySeconds: 5
+#     periodSeconds: 5
+#   env:
+#     - name: PORT
+#       value: "5001"
 
-# Logging configuration
-logging:
-  enabled: false
-  fluentd:
-    enabled: false
-  elasticsearch:
-    enabled: false
-  kibana:
-    enabled: false 
+# # MongoDB configuration
+# mongodb:
+#   enabled: true
+#   image:
+#     repository: mongo
+#     tag: "latest"
+#     pullPolicy: IfNotPresent
+#   service:
+#     type: ClusterIP
+#     port: 27017
+#     targetPort: 27017
+#   resources:
+#     limits:
+#       cpu: 500m
+#       memory: 1Gi
+#     requests:
+#       cpu: 200m
+#       memory: 512Mi
+#   persistence:
+#     enabled: true
+#     storageClass: "default"
+#     size: 10Gi
+#   env:
+#     - name: MONGO_INITDB_DATABASE
+#       value: "ecommerce"
+#     - name: MONGO_ROOT_PASSWORD
+#       valueFrom:
+#         secretKeyRef:
+#           name: mongodb-secrets
+#           key: mongodb-root-password
+
+# # Ingress configuration
+# ingress:
+#   enabled: true
+#   className: nginx
+#   annotations:
+#     kubernetes.io/ingress.class: nginx
+#     nginx.ingress.kubernetes.io/rewrite-target: /
+#     nginx.ingress.kubernetes.io/ssl-redirect: "false"
+#   hosts:
+#     - host: staging.ecommerce.com
+#       paths:
+#         - path: /
+#           pathType: Prefix
+#           backend:
+#             service:
+#               name: frontend-service
+#               port:
+#                 number: 80
+#         - path: /api
+#           pathType: Prefix
+#           backend:
+#             service:
+#               name: backend-service
+#               port:
+#                 number: 5000
+#         - path: /payment
+#           pathType: Prefix
+#           backend:
+#             service:
+#               name: payment-service
+#               port:
+#                 number: 5001
+#   tls: []
+
+# # Secrets configuration
+# secrets:
+#   enabled: true
+#   jwtSecret: "your-super-secret-jwt-key"
+#   mongodbPassword: "your-mongodb-password"
+
+# # Network policies
+# networkPolicy:
+#   enabled: true
+#   frontendPolicy:
+#     enabled: true
+#     ingress:
+#       - from:
+#           - podSelector:
+#               matchLabels:
+#                 app: backend
+#         ports:
+#           - protocol: TCP
+#             port: 80
+#   backendPolicy:
+#     enabled: true
+#     ingress:
+#       - from:
+#           - podSelector:
+#               matchLabels:
+#                 app: frontend
+#         ports:
+#           - protocol: TCP
+#             port: 5000
+#       - from:
+#           - podSelector:
+#               matchLabels:
+#                 app: payment
+#         ports:
+#           - protocol: TCP
+#             port: 5000
+#     egress:
+#       - to:
+#           - podSelector:
+#               matchLabels:
+#                 app: mongodb
+#         ports:
+#           - protocol: TCP
+#             port: 27017
+
+# # Monitoring configuration
+# monitoring:
+#   enabled: false
+#   prometheus:
+#     enabled: false
+#     serviceMonitor:
+#       enabled: false
+#   grafana:
+#     enabled: false
+#     dashboard:
+#       enabled: false
+
+# # Logging configuration
+# logging:
+#   enabled: false
+#   fluentd:
+#     enabled: false
+#   elasticsearch:
+#     enabled: false
+#   kibana:
+#     enabled: false 
