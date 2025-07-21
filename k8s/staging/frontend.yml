@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: your-registry.azurecr.io/ecommerce-app/frontend:latest
+        image: adityakrs/my-app
         ports:
         - containerPort: 80
         resources:
